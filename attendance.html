@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Attendance" />
+  <meta name="theme-color" content="#000000" />
+  <title>Attendance Tracker — OLED iOS Edition</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Dynamic Apple Touch Icon Generator (Creates native-looking icon when saved to iPhone Home Screen) -->
+  <link id="apple-touch-icon-link" rel="apple-touch-icon" href="" />
+
+  <style>
+    :root {
+      --oled-bg: #000000;
+      --card-bg: #111114;
+      --card-elevated: #1C1C21;
+      --border-subtle: #24242B;
+      --ios-green: #30D158;
+      --ios-green-dim: rgba(48, 209, 88, 0.14);
+      --ios-red: #FF453A;
+      --ios-red-dim: rgba(255, 69, 58, 0.14);
+      --ios-blue: #0A84FF;
+      --ios-amber: #FFD60A;
+      --ios-gray: #8E8E93;
+    }
+
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: var(--oled-bg);
+      color: #FFFFFF;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
+      overscroll-behavior-y: none;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 84px);
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Hide scrollbars on horizontal filter pills */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Tactile iOS button press feel */
+    .ios-press {
+      transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.12s ease, background-color 0.15s ease;
+    }
+    .ios-press:active {
+      transform: scale(0.95);
+      opacity: 0.85;
+    }
+
+    /* Card subtle glow transition */
+    .subject-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-subtle);
+      transition: border-color 0.25s ease, transform 0.2s ease, box-shadow 0.25s ease;
+    }
+
+    .subject-card.flash-green {
+      border-color: rgba(48, 209, 88, 0.8);
+      box-shadow: 0 0 22px rgba(48, 209, 88, 0.18);
+    }
+
+    .subject-card.flash-red {
+      border-color: rgba(255, 69, 58, 0.8);
+      box-shadow: 0 0 22px rgba(255, 69, 58, 0.18);
+    }
+
+    /* Donut ring smooth animation */
+    .donut-ring-progress {
+      transition: stroke-dashoffset 0.55s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.35s ease;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+
+    /* Glassmorphism Sticky Header */
+    .ios-glass {
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    .ios-modal-glass {
+      background: rgba(20, 20, 24, 0.96);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+    }
+
+    /* Custom Range Slider */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #2C2C34;
+      height: 6px;
+      border-radius: 999px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+  </style>
+
+</head>
+<body class="min-h-screen bg-black text-white selection:bg-blue-500 selection:text-white">
+
+  <!-- Sticky Top App Bar -->
+  <header class="sticky top-0 z-30 ios-glass border-b border-[#1E1E24] px-4 pt-3 pb-2.5">
+    <div class="max-w-2xl mx-auto">
+      <!-- Title & Top Actions -->
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white">Attendance</h1>
+            <span id="total-subjects-pill" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#1C1C22] text-zinc-300 border border-[#2C2C34] tabular-nums">
+              0 Subjects
+            </span>
+          </div>
+          <p class="text-xs text-zinc-400 mt-0.5" id="overall-subtitle">Track classes &amp; stay above target</p>
+        </div>
+
+    <div class="flex items-center gap-1.5">
+      <!-- iPhone Install Help Button -->
+      <button onclick="openModal('install-modal')" title="How to add to iPhone Home Screen" class="ios-press p-2 rounded-xl bg-[#16161B] hover:bg-[#202027] border border-[#26262E] text-zinc-300">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+        </svg>
+      </button>
+
+      <!-- Backup / Restore Button -->
+      <button onclick="openBackupModal()" title="Backup & Restore Data" class="ios-press px-2.5 py-2 rounded-xl bg-[#16161B] hover:bg-[#202027] border border-[#26262E] text-xs font-medium text-zinc-300 flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+        </svg>
+        <span class="hidden sm:inline">Backup</span>
+      </button>
+
+      <!-- + Add Subject Button -->
+      <button onclick="openSubjectModal()" class="ios-press px-3 py-2 rounded-xl bg-[#0A84FF] hover:bg-[#0070E0] text-white font-semibold text-xs sm:text-sm flex items-center gap-1 shadow-lg shadow-blue-500/20">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        <span>Add Subject</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Summary Status Strip (On Track vs At Risk + Overall Donut Ring) -->
+  <div class="grid grid-cols-3 gap-2 mb-3">
+    <div onclick="setQuickStatusFilter('all')" id="stat-card-all" class="ios-press cursor-pointer rounded-xl bg-[#111114] border border-[#24242C] px-3 py-2 flex items-center justify-between">
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">Overall Avg</div>
+        <div id="summary-overall-pct" class="text-base sm:text-lg font-bold tabular-nums text-white mt-0.5">0.0%</div>
+      </div>
+      <div class="text-[11px] text-zinc-400 tabular-nums text-right" id="summary-total-classes">0/0</div>
+    </div>
+
+    <div onclick="setQuickStatusFilter('green')" id="stat-card-green" class="ios-press cursor-pointer rounded-xl bg-[#111114] border border-[#24242C] px-3 py-2 flex items-center justify-between">
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-[#30D158] font-semibold">On Track</div>
+        <div id="summary-green-count" class="text-base sm:text-lg font-bold tabular-nums text-[#30D158] mt-0.5">0</div>
+      </div>
+      <span class="w-2.5 h-2.5 rounded-full bg-[#30D158] shadow-[0_0_8px_#30D158]"></span>
+    </div>
+
+    <div onclick="setQuickStatusFilter('red')" id="stat-card-red" class="ios-press cursor-pointer rounded-xl bg-[#111114] border border-[#24242C] px-3 py-2 flex items-center justify-between">
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-[#FF453A] font-semibold">Below Target</div>
+        <div id="summary-red-count" class="text-base sm:text-lg font-bold tabular-nums text-[#FF453A] mt-0.5">0</div>
+      </div>
+      <span class="w-2.5 h-2.5 rounded-full bg-[#FF453A] shadow-[0_0_8px_#FF453A]"></span>
+    </div>
+  </div>
+
+  <!-- Category Filter Pills (Scrollable) -->
+  <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1" id="category-pills-container">
+    <!-- Populated dynamically by JS -->
+  </div>
+
+  <!-- Search & Sort Controls -->
+  <div class="flex items-center gap-2 mt-2">
+    <div class="relative flex-1">
+      <svg class="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M16.65 10.825a5.825 5.825 0 11-11.65 0 5.825 5.825 0 0111.65 0z"/>
+      </svg>
+      <input
+        id="search-input"
+        type="text"
+        oninput="handleSearchChange(this.value)"
+        placeholder="Search among subjects..."
+        class="w-full bg-[#121216] border border-[#24242C] focus:border-[#0A84FF] rounded-xl pl-9 pr-8 py-1.5 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition"
+      />
+      <button id="clear-search-btn" onclick="clearSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Sort Dropdown -->
+    <select
+      id="sort-select"
+      onchange="handleSortChange(this.value)"
+      aria-label="Sort subjects"
+      class="bg-[#121216] border border-[#24242C] focus:border-[#0A84FF] rounded-xl px-2.5 py-1.5 text-xs sm:text-sm text-zinc-200 outline-none cursor-pointer"
+    >
+      <option value="risk-first">At-Risk (Red) First</option>
+      <option value="pct-asc">Lowest % First</option>
+      <option value="pct-desc">Highest % First</option>
+      <option value="alpha">A → Z Name</option>
+      <option value="recent">Recently Marked</option>
+      <option value="created">Custom / Added Order</option>
+    </select>
+  </div>
+</div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="max-w-2xl mx-auto px-4 pt-3">
+    <!-- Active Filter Notice Banner -->
+    <div id="filter-notice-banner" class="hidden mb-3 px-3 py-2 rounded-xl bg-[#16161C] border border-[#2A2A34] flex items-center justify-between text-xs text-zinc-300">
+      <span id="filter-notice-text">Showing filtered subjects</span>
+      <button onclick="resetAllFilters()" class="text-[#0A84FF] font-semibold hover:underline">Reset Filters</button>
+    </div>
+
+<!-- Subjects List Grid -->
+<div id="subjects-container" class="space-y-3">
+  <!-- Populated dynamically by JS -->
+</div>
+  </main>
+
+  <!-- Floating Quick Add Bar for Thumb Reachability on iPhone -->
+  <div class="fixed bottom-4 inset-x-0 z-20 pointer-events-none flex justify-center px-4">
+    <div class="ios-glass border border-[#2C2C36] rounded-full px-3 py-1.5 shadow-2xl flex items-center gap-2 pointer-events-auto">
+      <button onclick="openSubjectModal()" class="ios-press flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0A84FF] text-white text-xs font-semibold">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        <span>New Subject</span>
+      </button>
+      <div class="h-4 w-[1px] bg-[#2C2C36]"></div>
+      <button onclick="loadSample15Subjects()" class="ios-press px-2.5 py-1.5 rounded-full bg-[#191920] hover:bg-[#23232C] text-zinc-300 text-xs font-medium">
+        Load 15 Demo Subjects
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast-container" class="fixed top-4 inset-x-0 z-50 flex justify-center pointer-events-none px-4 transition-all duration-300 opacity-0 -translate-y-3">
+    <div id="toast-box" class="ios-modal-glass border border-[#32323E] text-white px-4 py-2.5 rounded-2xl shadow-2xl text-xs sm:text-sm font-medium flex items-center gap-2">
+      <span id="toast-dot" class="w-2 h-2 rounded-full bg-[#30D158]"></span>
+      <span id="toast-message">Saved</span>
+    </div>
+  </div>
+
+  <!-- 
+       MODAL 1: ADD / EDIT SUBJECT MODAL
+        -->
+
+  <div id="subject-modal" class="fixed inset-0 z-40 hidden items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
+    <div class="ios-modal-glass border-t sm:border border-[#2C2C36] w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 id="subject-modal-title" class="text-lg font-bold text-white">Add Subject</h2>
+        <button onclick="closeModal('subject-modal')" class="ios-press p-1.5 rounded-full bg-[#24242D] text-zinc-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+  <form id="subject-form" onsubmit="saveSubjectForm(event)" class="space-y-4">
+    <input type="hidden" id="form-subject-id" value="" />
+
+    <!-- Subject Name -->
+    <div>
+      <label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">Subject Name</label>
+      <input
+        id="form-subject-name"
+        type="text"
+        required
+        maxlength="60"
+        placeholder="e.g., General Medicine, Anatomy, Calculus..."
+        class="w-full bg-[#111115] border border-[#2C2C36] focus:border-[#0A84FF] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 outline-none"
+      />
+    </div>
+
+    <!-- Category Picker -->
+    <div>
+      <label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">Category</label>
+      <div class="grid grid-cols-4 gap-2" id="form-category-group">
+        <button type="button" onclick="selectFormCategory('Theory')" data-cat="Theory" class="cat-choice ios-press py-2 rounded-xl text-xs font-semibold border border-[#2C2C36] bg-[#111115] text-zinc-300">Theory</button>
+        <button type="button" onclick="selectFormCategory('Practical')" data-cat="Practical" class="cat-choice ios-press py-2 rounded-xl text-xs font-semibold border border-[#2C2C36] bg-[#111115] text-zinc-300">Practical</button>
+        <button type="button" onclick="selectFormCategory('Posting')" data-cat="Posting" class="cat-choice ios-press py-2 rounded-xl text-xs font-semibold border border-[#2C2C36] bg-[#111115] text-zinc-300">Posting</button>
+        <button type="button" onclick="selectFormCategory('Other')" data-cat="Other" class="cat-choice ios-press py-2 rounded-xl text-xs font-semibold border border-[#2C2C36] bg-[#111115] text-zinc-300">Other</button>
+      </div>
+      <input type="hidden" id="form-subject-category" value="Theory" />
+    </div>
+
+    <!-- Target Attendance Percentage -->
+    <div class="bg-[#111115] border border-[#262630] rounded-2xl p-3.5">
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Target Attendance</label>
+        <div class="flex items-center gap-1">
+          <input
+            id="form-target-number"
+            type="number"
+            min="1"
+            max="100"
+            value="75"
+            oninput="syncTargetInputs(this.value)"
+            class="w-16 bg-[#1C1C24] border border-[#32323E] rounded-lg px-2 py-1 text-right text-sm font-bold text-[#30D158] tabular-nums outline-none"
+          />
+          <span class="text-sm font-bold text-zinc-400">%</span>
+        </div>
+      </div>
+
+      <input
+        id="form-target-slider"
+        type="range"
+        min="50"
+        max="100"
+        step="1"
+        value="75"
+        oninput="syncTargetInputs(this.value)"
+        class="w-full my-2"
+      />
+
+      <!-- Quick Target Presets -->
+      <div class="flex items-center justify-between gap-1.5 mt-2">
+        <span class="text-[11px] text-zinc-500">Presets:</span>
+        <div class="flex items-center gap-1.5">
+          <button type="button" onclick="syncTargetInputs(70)" class="ios-press px-2.5 py-1 rounded-lg bg-[#1C1C24] hover:bg-[#282834] text-xs font-medium text-zinc-300">70%</button>
+          <button type="button" onclick="syncTargetInputs(75)" class="ios-press px-2.5 py-1 rounded-lg bg-[#1C1C24] hover:bg-[#282834] text-xs font-medium text-zinc-300">75%</button>
+          <button type="button" onclick="syncTargetInputs(80)" class="ios-press px-2.5 py-1 rounded-lg bg-[#1C1C24] hover:bg-[#282834] text-xs font-medium text-zinc-300">80%</button>
+          <button type="button" onclick="syncTargetInputs(85)" class="ios-press px-2.5 py-1 rounded-lg bg-[#1C1C24] hover:bg-[#282834] text-xs font-medium text-zinc-300">85%</button>
+          <button type="button" onclick="syncTargetInputs(90)" class="ios-press px-2.5 py-1 rounded-lg bg-[#1C1C24] hover:bg-[#282834] text-xs font-medium text-zinc-300">90%</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Existing / Mid-Semester Attendance Counts -->
+    <div class="bg-[#111115] border border-[#262630] rounded-2xl p-3.5">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Classes Count (Optional Mid-Semester Start)</span>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[11px] text-zinc-400 mb-1">Classes Attended</label>
+          <div class="flex items-center">
+            <button type="button" onclick="stepFormCount('form-attended', -1)" class="ios-press px-3 py-2 bg-[#1E1E26] rounded-l-xl border border-r-0 border-[#2E2E3A] text-white font-bold">−</button>
+            <input
+              id="form-attended"
+              type="number"
+              min="0"
+              value="0"
+              oninput="validateFormCounts()"
+              class="w-full bg-[#14141A] border-y border-[#2E2E3A] py-2 text-center text-sm font-bold tabular-nums text-white outline-none"
+            />
+            <button type="button" onclick="stepFormCount('form-attended', 1)" class="ios-press px-3 py-2 bg-[#1E1E26] rounded-r-xl border border-l-0 border-[#2E2E3A] text-white font-bold">+</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] text-zinc-400 mb-1">Total Classes Held</label>
+          <div class="flex items-center">
+            <button type="button" onclick="stepFormCount('form-total', -1)" class="ios-press px-3 py-2 bg-[#1E1E26] rounded-l-xl border border-r-0 border-[#2E2E3A] text-white font-bold">−</button>
+            <input
+              id="form-total"
+              type="number"
+              min="0"
+              value="0"
+              oninput="validateFormCounts()"
+              class="w-full bg-[#14141A] border-y border-[#2E2E3A] py-2 text-center text-sm font-bold tabular-nums text-white outline-none"
+            />
+            <button type="button" onclick="stepFormCount('form-total', 1)" class="ios-press px-3 py-2 bg-[#1E1E26] rounded-r-xl border border-l-0 border-[#2E2E3A] text-white font-bold">+</button>
+          </div>
+        </div>
+      </div>
+      <p id="form-count-error" class="hidden text-xs text-[#FF453A] mt-2 font-medium">
+        Attended classes cannot exceed Total classes.
+      </p>
+    </div>
+
+    <!-- Modal Buttons -->
+    <div class="flex items-center justify-between gap-2 pt-2">
+      <button
+        type="button"
+        id="delete-subject-btn"
+        onclick="deleteCurrentSubject()"
+        class="hidden ios-press px-4 py-3 rounded-xl bg-[#FF453A]/15 border border-[#FF453A]/40 text-[#FF453A] text-sm font-semibold"
+      >
+        Delete
+      </button>
+
+      <div class="flex items-center gap-2 flex-1 justify-end">
+        <button
+          type="button"
+          onclick="closeModal('subject-modal')"
+          class="ios-press px-4 py-3 rounded-xl bg-[#22222A] text-zinc-300 text-sm font-semibold"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          class="ios-press flex-1 sm:flex-initial px-6 py-3 rounded-xl bg-[#0A84FF] hover:bg-[#0070E0] text-white text-sm font-semibold shadow-lg shadow-blue-500/25"
+        >
+          Save Subject
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+  </div>
+
+  <!-- 
+       MODAL 2: BACKUP / RESTORE & DATA MANAGEMENT
+        -->
+
+  <div id="backup-modal" class="fixed inset-0 z-40 hidden items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
+    <div class="ios-modal-glass border-t sm:border border-[#2C2C36] w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold text-white">Backup &amp; Restore</h2>
+        <button onclick="closeModal('backup-modal')" class="ios-press p-1.5 rounded-full bg-[#24242D] text-zinc-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+  <p class="text-xs text-zinc-400 mb-4 leading-relaxed">
+    Your attendance is automatically saved on your iPhone. Copy the backup code below to save a copy in Apple Notes, or paste a code to restore.
+  </p>
+
+  <div class="space-y-3">
+    <div>
+      <div class="flex items-center justify-between mb-1.5">
+        <label class="text-xs font-semibold uppercase tracking-wider text-zinc-400">Backup JSON Data</label>
+        <button onclick="copyBackupCode()" class="ios-press text-xs font-semibold text-[#0A84FF] flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          </svg>
+          <span>Copy Backup Code</span>
+        </button>
+      </div>
+      <textarea
+        id="backup-textarea"
+        rows="4"
+        placeholder="Paste backup JSON code here..."
+        class="w-full bg-[#111115] border border-[#2C2C36] focus:border-[#0A84FF] rounded-xl p-3 text-xs font-mono text-zinc-200 outline-none"
+      ></textarea>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2">
+      <button onclick="downloadBackupFile()" class="ios-press py-2.5 px-3 rounded-xl bg-[#1C1C24] border border-[#2E2E3A] text-xs font-semibold text-zinc-200 flex items-center justify-center gap-1.5">
+        <svg class="w-4 h-4 text-[#0A84FF]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        <span>Download File</span>
+      </button>
+
+      <button onclick="restoreFromTextarea()" class="ios-press py-2.5 px-3 rounded-xl bg-[#30D158]/20 border border-[#30D158]/40 text-xs font-semibold text-[#30D158] flex items-center justify-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <span>Restore Code</span>
+      </button>
+    </div>
+
+    <!-- Danger Zone: Reset All Data -->
+    <div class="pt-3 mt-3 border-t border-[#262630] flex items-center justify-between">
+      <div>
+        <div class="text-xs font-semibold text-zinc-300">Clear All Subjects</div>
+        <div class="text-[11px] text-zinc-500">Start fresh with an empty list</div>
+      </div>
+      <button id="clear-all-btn" onclick="handleClearAllClick()" class="ios-press px-3 py-2 rounded-xl bg-[#FF453A]/15 border border-[#FF453A]/30 text-xs font-semibold text-[#FF453A]">
+        Clear All
+      </button>
+    </div>
+  </div>
+</div>
+  </div>
+
+  <!-- 
+       MODAL 3: HOW TO INSTALL ON iPHONE HOME SCREEN
+        -->
+
+  <div id="install-modal" class="fixed inset-0 z-40 hidden items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
+    <div class="ios-modal-glass border-t sm:border border-[#2C2C36] w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold text-white">Use as an iPhone App</h2>
+        <button onclick="closeModal('install-modal')" class="ios-press p-1.5 rounded-full bg-[#24242D] text-zinc-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+  <div class="space-y-3 text-xs sm:text-sm text-zinc-300">
+    <div class="p-3 rounded-2xl bg-[#131318] border border-[#25252E] flex items-start gap-3">
+      <span class="w-6 h-6 rounded-full bg-[#0A84FF]/20 text-[#0A84FF] font-bold flex items-center justify-center shrink-0">1</span>
+      <div>
+        <p class="font-semibold text-white">Open in Safari on your iPhone</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Tap the <strong class="text-white">Share</strong> button at the bottom of Safari (the square with an arrow pointing up).</p>
+      </div>
+    </div>
+
+    <div class="p-3 rounded-2xl bg-[#131318] border border-[#25252E] flex items-start gap-3">
+      <span class="w-6 h-6 rounded-full bg-[#30D158]/20 text-[#30D158] font-bold flex items-center justify-center shrink-0">2</span>
+      <div>
+        <p class="font-semibold text-white">Tap "Add to Home Screen"</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Scroll down the share sheet and select <strong class="text-white">Add to Home Screen</strong>, then tap <strong class="text-white">Add</strong>.</p>
+      </div>
+    </div>
+
+    <div class="p-3 rounded-2xl bg-[#131318] border border-[#25252E] flex items-start gap-3">
+      <span class="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 font-bold flex items-center justify-center shrink-0">3</span>
+      <div>
+        <p class="font-semibold text-white">Full-Screen Native OLED Experience</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Launch it from your Home Screen—it runs full-screen with no browser bars and remembers all your subjects offline.</p>
+      </div>
+    </div>
+  </div>
+
+  <button onclick="closeModal('install-modal')" class="ios-press w-full mt-4 py-3 rounded-xl bg-[#0A84FF] text-white font-semibold text-sm">
+    Got It
+  </button>
+</div>
+  </div>
+
+  <!-- Application Logic -->
+  <script>
+    const STORAGE_KEY = 'ios_oled_attendance_tracker_v1';
+
+    // Default 15 starter subjects demonstrating Theory, Practical, Posting & different targets
+    const SAMPLE_15_SUBJECTS = [
+      { id: 'sub-1', name: 'General Medicine', category: 'Theory', attended: 28, total: 34, target: 75, lastMarked: Date.now() - 3600 * 1000 * 3, history: [] },
+      { id: 'sub-2', name: 'General Surgery', category: 'Theory', attended: 21, total: 30, target: 75, lastMarked: Date.now() - 3600 * 1000 * 26, history: [] },
+      { id: 'sub-3', name: 'Medicine Clinical Posting', category: 'Posting', attended: 19, total: 22, target: 80, lastMarked: Date.now() - 3600 * 1000 * 5, history: [] },
+      { id: 'sub-4', name: 'Obstetrics & Gynecology', category: 'Theory', attended: 24, total: 30, target: 75, lastMarked: Date.now() - 3600 * 1000 * 48, history: [] },
+      { id: 'sub-5', name: 'Pediatrics', category: 'Theory', attended: 14, total: 20, target: 75, lastMarked: Date.now() - 3600 * 1000 * 50, history: [] },
+      { id: 'sub-6', name: 'Surgery Ward Posting', category: 'Posting', attended: 15, total: 20, target: 80, lastMarked: Date.now() - 3600 * 1000 * 72, history: [] },
+      { id: 'sub-7', name: 'Pathology Lab', category: 'Practical', attended: 17, total: 20, target: 80, lastMarked: Date.now() - 3600 * 1000 * 28, history: [] },
+      { id: 'sub-8', name: 'Pharmacology', category: 'Theory', attended: 26, total: 32, target: 75, lastMarked: Date.now() - 3600 * 1000 * 96, history: [] },
+      { id: 'sub-9', name: 'Microbiology Practical', category: 'Practical', attended: 13, total: 18, target: 80, lastMarked: Date.now() - 3600 * 1000 * 120, history: [] },
+      { id: 'sub-10', name: 'Orthopedics', category: 'Theory', attended: 12, total: 15, target: 75, lastMarked: Date.now() - 3600 * 1000 * 60, history: [] },
+      { id: 'sub-11', name: 'ENT (Otorhinolaryngology)', category: 'Theory', attended: 16, total: 22, target: 75, lastMarked: Date.now() - 3600 * 1000 * 140, history: [] },
+      { id: 'sub-12', name: 'Ophthalmology', category: 'Theory', attended: 18, total: 22, target: 75, lastMarked: Date.now() - 3600 * 1000 * 150, history: [] },
+      { id: 'sub-13', name: 'Community Medicine (PSM)', category: 'Theory', attended: 25, total: 30, target: 75, lastMarked: Date.now() - 3600 * 1000 * 160, history: [] },
+      { id: 'sub-14', name: 'Forensic Medicine', category: 'Theory', attended: 15, total: 18, target: 75, lastMarked: Date.now() - 3600 * 1000 * 180, history: [] },
+      { id: 'sub-15', name: 'Dermatology & Psychiatry', category: 'Posting', attended: 11, total: 15, target: 75, lastMarked: Date.now() - 3600 * 1000 * 200, history: [] }
+    ];
+
+    // State
+    let subjects = [];
+    let activeCategory = 'All';
+    let activeStatusFilter = 'all'; // 'all' | 'green' | 'red'
+    let searchQuery = '';
+    let sortMode = 'risk-first';
+    let clearAllConfirmArmed = false;
+
+    // Initialize App on Load
+    window.addEventListener('DOMContentLoaded', () => {
+      generateAppleTouchIcon();
+      loadFromStorage();
+      renderAll();
+    });
+
+    // Generate crisp iOS Home Screen Icon via Canvas
+    function generateAppleTouchIcon() {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 180;
+        canvas.height = 180;
+        const ctx = canvas.getContext('2d');
+
+        // OLED Black background
+        ctx.fillStyle = '#08080A';
+        ctx.fillRect(0, 0, 180, 180);
+
+        // Background track ring
+        ctx.lineWidth = 18;
+        ctx.strokeStyle = '#1E1E26';
+        ctx.beginPath();
+        ctx.arc(90, 90, 56, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Neon Green Donut Arc
+        ctx.lineWidth = 18;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#30D158';
+        ctx.beginPath();
+        ctx.arc(90, 90, 56, -Math.PI / 2, Math.PI * 0.95);
+        ctx.stroke();
+
+        // Center Percentage Text
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 30px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('85%', 90, 92);
+
+        const link = document.getElementById('apple-touch-icon-link');
+        if (link) link.href = canvas.toDataURL('image/png');
+      } catch (e) {
+        // Fallback silently if canvas restricted
+      }
+    }
+
+    function loadFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            subjects = parsed;
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Error loading attendance data:', err);
+      }
+      // First time launch: load the 15 realistic subjects so user immediately sees how 15+ subjects look
+      subjects = JSON.parse(JSON.stringify(SAMPLE_15_SUBJECTS));
+      saveToStorage();
+    }
+
+    function saveToStorage() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(subjects));
+      } catch (err) {
+        console.error('Error saving attendance data:', err);
+      }
+    }
+
+    // Percentage Calculation Helper
+    function getPercentage(attended, total) {
+      if (!total || total <= 0) return 0;
+      return (attended / total) * 100;
+    }
+
+    // Status Helper: returns 'green', 'red', or 'neutral'
+    function getSubjectStatus(subject) {
+      if (subject.total === 0) return 'neutral';
+      const pct = getPercentage(subject.attended, subject.total);
+      // Use small epsilon to avoid floating point issues like 74.99999999999 for 3/4
+      return (pct + 0.0001 >= subject.target) ? 'green' : 'red';
+    }
+
+    // Smart Margin Calculation ("Safe to miss X" or "Attend next X")
+    function getSmartMarginInfo(subject) {
+      const { attended, total, target } = subject;
+      if (total === 0) {
+        return {
+          status: 'neutral',
+          text: `Target set to ${target}% — tap Yes or No to start logging`
+        };
+      }
+
+      const pct = getPercentage(attended, total);
+      const isGreen = (pct + 0.0001 >= target);
+
+      if (isGreen) {
+        // Calculate how many future classes can be missed while staying >= target
+        // (attended) / (total + m) >= target / 100  =>  m <= (100*attended - target*total) / target
+        const safeToMiss = Math.floor((100 * attended - target * total) / target);
+        if (safeToMiss <= 0) {
+          return {
+            status: 'green',
+            text: `On target (${target}%) — cannot miss next class`
+          };
+        } else if (safeToMiss === 1) {
+          return {
+            status: 'green',
+            text: `Safe to miss next 1 class (stays ≥ ${target}%)`
+          };
+        } else {
+          return {
+            status: 'green',
+            text: `Safe to miss next ${safeToMiss} classes (stays ≥ ${target}%)`
+          };
+        }
+      } else {
+        // Calculate consecutive classes needed to reach target
+        // (attended + x) / (total + x) >= target / 100  =>  x >= (target*total - 100*attended) / (100 - target)
+        if (target >= 100) {
+          return {
+            status: 'red',
+            text: `Below 100% target (${total - attended} missed)`
+          };
+        }
+        const needed = Math.ceil((target * total - 100 * attended) / (100 - target));
+        const cleanNeeded = Math.max(1, needed);
+        return {
+          status: 'red',
+          text: `Attend next ${cleanNeeded} ${cleanNeeded === 1 ? 'class' : 'classes'} to reach ${target}%`
+        };
+      }
+    }
+
+    // Format "Last Marked" Timestamp + check if marked Today
+    function getLastMarkedInfo(timestamp) {
+      if (!timestamp) {
+        return { text: 'Not marked yet', isToday: false };
+      }
+      const now = new Date();
+      const date = new Date(timestamp);
+
+      const isToday =
+        now.getFullYear() === date.getFullYear() &&
+        now.getMonth() === date.getMonth() &&
+        now.getDate() === date.getDate();
+
+      const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+      if (isToday) {
+        return { text: `Marked Today, ${timeStr}`, isToday: true };
+      }
+
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const isYesterday =
+        yesterday.getFullYear() === date.getFullYear() &&
+        yesterday.getMonth() === date.getMonth() &&
+        yesterday.getDate() === date.getDate();
+
+      if (isYesterday) {
+        return { text: `Marked Yesterday`, isToday: false };
+      }
+
+      const shortDate = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return { text: `Last: ${shortDate}`, isToday: false };
+    }
+
+    // 
+    // CORE YES / NO / UNDO ACTIONS
+    // 
+    function markAttendance(subjectId, isPresent) {
+      const sub = subjects.find(s => s.id === subjectId);
+      if (!sub) return;
+
+      // Save previous snapshot in subject's history stack (max 25 steps)
+      if (!Array.isArray(sub.history)) sub.history = [];
+      sub.history.push({
+        attended: sub.attended,
+        total: sub.total,
+        lastMarked: sub.lastMarked || null
+      });
+      if (sub.history.length > 25) sub.history.shift();
+
+      if (isPresent) {
+        // YES pressed: both Attended and Total increase by 1
+        sub.attended += 1;
+        sub.total += 1;
+      } else {
+        // NO pressed: Total increases by 1, Attended remains the same
+        sub.total += 1;
+      }
+
+      sub.lastMarked = Date.now();
+      saveToStorage();
+      renderAll();
+
+      // Visual feedback flash on card
+      const cardEl = document.getElementById(`card-${subjectId}`);
+      if (cardEl) {
+        const cls = isPresent ? 'flash-green' : 'flash-red';
+        cardEl.classList.add(cls);
+        setTimeout(() => cardEl.classList.remove(cls), 500);
+      }
+
+      const newPct = getPercentage(sub.attended, sub.total).toFixed(1);
+      showToast(
+        isPresent
+          ? `Yes (${sub.name}): ${sub.attended}/${sub.total} (${newPct}%)`
+          : `No (${sub.name}): ${sub.attended}/${sub.total} (${newPct}%)`,
+        isPresent ? 'green' : 'red'
+      );
+    }
+
+    function undoLastAction(subjectId) {
+      const sub = subjects.find(s => s.id === subjectId);
+      if (!sub || !Array.isArray(sub.history) || sub.history.length === 0) return;
+
+      const prevState = sub.history.pop();
+      sub.attended = prevState.attended;
+      sub.total = prevState.total;
+      sub.lastMarked = prevState.lastMarked;
+
+      saveToStorage();
+      renderAll();
+      showToast(`Undid last action for ${sub.name}`, 'blue');
+    }
+
+    // 
+    // RENDER PIPELINE
+    // 
+    function renderAll() {
+      renderSummaryHeader();
+      renderCategoryPills();
+      renderSubjectsList();
+    }
+
+    function renderSummaryHeader() {
+      const totalCount = subjects.length;
+      document.getElementById('total-subjects-pill').textContent = `${totalCount} ${totalCount === 1 ? 'Subject' : 'Subjects'}`;
+
+      let greenCount = 0;
+      let redCount = 0;
+      let sumAttended = 0;
+      let sumTotal = 0;
+
+      subjects.forEach(s => {
+        sumAttended += s.attended;
+        sumTotal += s.total;
+        const st = getSubjectStatus(s);
+        if (st === 'green') greenCount++;
+        else if (st === 'red') redCount++;
+      });
+
+      const overallPct = sumTotal > 0 ? ((sumAttended / sumTotal) * 100).toFixed(1) : '0.0';
+      document.getElementById('summary-overall-pct').textContent = `${overallPct}%`;
+      document.getElementById('summary-total-classes').textContent = `${sumAttended}/${sumTotal} classes`;
+      document.getElementById('summary-green-count').textContent = greenCount;
+      document.getElementById('summary-red-count').textContent = redCount;
+
+      // Highlight active quick status card
+      const cardAll = document.getElementById('stat-card-all');
+      const cardGreen = document.getElementById('stat-card-green');
+      const cardRed = document.getElementById('stat-card-red');
+
+      cardAll.className = `ios-press cursor-pointer rounded-xl bg-[#111114] px-3 py-2 flex items-center justify-between border ${activeStatusFilter === 'all' ? 'border-[#0A84FF]' : 'border-[#24242C]'}`;
+      cardGreen.className = `ios-press cursor-pointer rounded-xl bg-[#111114] px-3 py-2 flex items-center justify-between border ${activeStatusFilter === 'green' ? 'border-[#30D158]' : 'border-[#24242C]'}`;
+      cardRed.className = `ios-press cursor-pointer rounded-xl bg-[#111114] px-3 py-2 flex items-center justify-between border ${activeStatusFilter === 'red' ? 'border-[#FF453A]' : 'border-[#24242C]'}`;
+    }
+
+    function renderCategoryPills() {
+      const categories = ['All', 'Theory', 'Practical', 'Posting', 'Other'];
+      const counts = { All: subjects.length, Theory: 0, Practical: 0, Posting: 0, Other: 0 };
+
+      subjects.forEach(s => {
+        const cat = counts[s.category] !== undefined ? s.category : 'Other';
+        counts[cat]++;
+      });
+
+      const container = document.getElementById('category-pills-container');
+      container.innerHTML = categories.map(cat => {
+        const isActive = activeCategory === cat;
+        return `
+          <button
+            onclick="setCategoryFilter('${cat}')"
+            class="ios-press shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition ${
+              isActive
+                ? 'bg-white text-black shadow-sm'
+                : 'bg-[#141419] text-zinc-400 border border-[#24242C] hover:text-zinc-200'
+            }"
+          >
+            <span>${cat}</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full tabular-nums ${
+              isActive ? 'bg-black/15 text-black font-bold' : 'bg-[#22222A] text-zinc-400'
+            }">${counts[cat]}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function getFilteredAndSortedSubjects() {
+      let list = [...subjects];
+
+      // Category filter
+      if (activeCategory !== 'All') {
+        list = list.filter(s => (s.category || 'Other') === activeCategory);
+      }
+
+      // Status filter (green/red)
+      if (activeStatusFilter !== 'all') {
+        list = list.filter(s => getSubjectStatus(s) === activeStatusFilter);
+      }
+
+      // Search query
+      if (searchQuery.trim() !== '') {
+        const q = searchQuery.toLowerCase().trim();
+        list = list.filter(s =>
+          s.name.toLowerCase().includes(q) ||
+          (s.category && s.category.toLowerCase().includes(q))
+        );
+      }
+
+      // Sort
+      list.sort((a, b) => {
+        const pctA = getPercentage(a.attended, a.total);
+        const pctB = getPercentage(b.attended, b.total);
+        const statusA = getSubjectStatus(a);
+        const statusB = getSubjectStatus(b);
+
+        if (sortMode === 'risk-first') {
+          // Red first, then Green, then Neutral; within same status, lowest margin/percentage first
+          const rank = { red: 0, green: 1, neutral: 2 };
+          if (rank[statusA] !== rank[statusB]) return rank[statusA] - rank[statusB];
+          return (pctA - a.target) - (pctB - b.target);
+        }
+        if (sortMode === 'pct-asc') return pctA - pctB;
+        if (sortMode === 'pct-desc') return pctB - pctA;
+        if (sortMode === 'alpha') return a.name.localeCompare(b.name);
+        if (sortMode === 'recent') return (b.lastMarked || 0) - (a.lastMarked || 0);
+        return 0; // 'created' keeps array order
+      });
+
+      return list;
+    }
+
+    function renderSubjectsList() {
+      const container = document.getElementById('subjects-container');
+      const filtered = getFilteredAndSortedSubjects();
+
+      // Update filter banner
+      const banner = document.getElementById('filter-notice-banner');
+      const isFiltering = activeCategory !== 'All' || activeStatusFilter !== 'all' || searchQuery.trim() !== '';
+      if (isFiltering) {
+        banner.classList.remove('hidden');
+        document.getElementById('filter-notice-text').textContent =
+          `Showing ${filtered.length} of ${subjects.length} subjects`;
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      if (subjects.length === 0) {
+        container.innerHTML = `
+          <div class="rounded-3xl bg-[#111114] border border-[#24242C] p-8 text-center my-4">
+            <div class="w-14 h-14 rounded-2xl bg-[#1C1C24] border border-[#2E2E3A] mx-auto flex items-center justify-center mb-3">
+              <svg class="w-7 h-7 text-[#30D158]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <h3 class="text-base font-bold text-white">No Subjects Added Yet</h3>
+            <p class="text-xs text-zinc-400 max-w-xs mx-auto mt-1 mb-5">
+              Add your own subjects or load 15 sample subjects to test the OLED donut charts and Yes/No counters.
+            </p>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-2.5">
+              <button onclick="openSubjectModal()" class="ios-press w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#0A84FF] text-white text-xs font-semibold">
+                + Add First Subject
+              </button>
+              <button onclick="loadSample15Subjects()" class="ios-press w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#1C1C24] border border-[#2E2E3A] text-zinc-200 text-xs font-semibold">
+                Load 15 Sample Subjects
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="rounded-2xl bg-[#111114] border border-[#24242C] p-6 text-center my-2">
+            <p class="text-sm font-semibold text-zinc-300">No subjects match your current filter.</p>
+            <button onclick="resetAllFilters()" class="mt-3 px-4 py-2 rounded-xl bg-[#1E1E26] text-xs font-semibold text-[#0A84FF]">
+              Show All ${subjects.length} Subjects
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      // SVG Donut geometry
+      const radius = 33;
+      const circumference = 2 * Math.PI * radius;
+
+      container.innerHTML = filtered.map((sub, idx) => {
+        const pct = getPercentage(sub.attended, sub.total);
+        const pctFormatted = sub.total === 0 ? '0%' : (Number.isInteger(Number(pct.toFixed(1))) ? `${pct.toFixed(0)}%` : `${pct.toFixed(1)}%`);
+        const status = getSubjectStatus(sub);
+
+        // Dynamic Colors: Green (#30D158) if >= target, Red (#FF453A) if < target
+        let accentHex = '#8E8E93';
+        let accentBadgeClass = 'bg-zinc-800/80 text-zinc-300 border-zinc-700';
+        let statusTextClass = 'text-zinc-400';
+
+        if (status === 'green') {
+          accentHex = '#30D158';
+          accentBadgeClass = 'bg-[#30D158]/15 text-[#30D158] border-[#30D158]/30';
+          statusTextClass = 'text-[#30D158]';
+        } else if (status === 'red') {
+          accentHex = '#FF453A';
+          accentBadgeClass = 'bg-[#FF453A]/15 text-[#FF453A] border-[#FF453A]/30';
+          statusTextClass = 'text-[#FF453A]';
+        }
+
+        const clampedPct = Math.min(100, Math.max(0, pct));
+        const dashOffset = circumference - (clampedPct / 100) * circumference;
+
+        const marginInfo = getSmartMarginInfo(sub);
+        const lastMarked = getLastMarkedInfo(sub.lastMarked);
+        const hasUndo = Array.isArray(sub.history) && sub.history.length > 0;
+
+        return `
+          <article id="card-${sub.id}" class="subject-card rounded-2xl p-4">
+            <!-- Top Row: Subject Info on Left, Adjacent Donut Chart on Right -->
+            <div class="flex items-center justify-between gap-3">
+              <!-- Left Column: Title, Badges, Two Counters (Attended & Total), Smart Margin -->
+              <div class="flex-1 min-w-0">
+                <!-- Category + Target + Marked Today Pill -->
+                <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+                  <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#1D1D24] text-zinc-300 border border-[#2E2E38]">
+                    ${escapeHtml(sub.category || 'Theory')}
+                  </span>
+                  <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border tabular-nums ${accentBadgeClass}">
+                    Target: ${sub.target}%
+                  </span>
+                  <span class="text-[10px] font-medium px-2 py-0.5 rounded-md ${
+                    lastMarked.isToday
+                      ? 'bg-[#0A84FF]/15 text-[#5AC8FA] border border-[#0A84FF]/30 font-semibold'
+                      : 'text-zinc-500'
+                  } flex items-center gap-1">
+                    ${lastMarked.isToday ? '<span class="w-1.5 h-1.5 rounded-full bg-[#5AC8FA]"></span>' : ''}
+                    ${lastMarked.text}
+                  </span>
+                </div>
+
+                <!-- Subject Title -->
+                <h2 class="text-base sm:text-lg font-bold text-white leading-snug truncate" title="${escapeHtml(sub.name)}">
+                  ${escapeHtml(sub.name)}
+                </h2>
+
+                <!-- TWO REQUIRED ITEMS: Classes Attended & Total Classes -->
+                <div class="grid grid-cols-2 gap-2 mt-2.5 max-w-xs">
+                  <div class="bg-[#18181E] border border-[#262630] rounded-xl px-3 py-2">
+                    <div class="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">Classes Attended</div>
+                    <div class="text-lg sm:text-xl font-extrabold text-white tabular-nums mt-0.5">${sub.attended}</div>
+                  </div>
+                  <div class="bg-[#18181E] border border-[#262630] rounded-xl px-3 py-2">
+                    <div class="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">Total Classes</div>
+                    <div class="text-lg sm:text-xl font-extrabold text-white tabular-nums mt-0.5">${sub.total}</div>
+                  </div>
+                </div>
+
+                <!-- Smart Margin Status Line -->
+                <p class="text-xs font-medium mt-2.5 flex items-center gap-1.5 ${statusTextClass}">
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${accentHex}"></span>
+                  <span class="truncate">${marginInfo.text}</span>
+                </p>
+              </div>
+
+              <!-- Right Column: Adjacent Donut Chart + Written Percentage -->
+              <div class="shrink-0 flex flex-col items-center justify-center pl-1">
+                <div class="relative w-[84px] h-[84px] flex items-center justify-center">
+                  <svg class="w-full h-full" viewBox="0 0 80 80">
+                    <!-- Dark Track Ring -->
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="${radius}"
+                      fill="transparent"
+                      stroke="#22222A"
+                      stroke-width="7.5"
+                    />
+                    <!-- Dynamic Green/Red Donut Progress Ring -->
+                    <circle
+                      class="donut-ring-progress"
+                      cx="40"
+                      cy="40"
+                      r="${radius}"
+                      fill="transparent"
+                      stroke="${accentHex}"
+                      stroke-width="7.5"
+                      stroke-linecap="round"
+                      stroke-dasharray="${circumference}"
+                      stroke-dashoffset="${dashOffset}"
+                    />
+                  </svg>
+                  <!-- Centered Written Percentage Inside Donut -->
+                  <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <span class="text-sm font-extrabold tabular-nums tracking-tight" style="color: ${accentHex}">
+                      ${pctFormatted}
+                    </span>
+                    <span class="text-[9px] font-semibold uppercase tracking-wider text-zinc-500">
+                      ${status === 'green' ? 'SAFE' : status === 'red' ? 'LOW' : 'NEW'}
+                    </span>
+                  </div>
+                </div>
+                <!-- Written Percentage Caption Under Chart -->
+                <span class="text-[11px] font-bold tabular-nums mt-1" style="color: ${accentHex}">
+                  ${pct.toFixed(1)}% (${sub.attended}/${sub.total})
+                </span>
+              </div>
+            </div>
+
+            <!-- Bottom Action Bar: YES, NO, UNDO, EDIT -->
+            <div class="flex items-center gap-2 mt-3.5 pt-3 border-t border-[#1F1F27]">
+              <!-- YES Option: Increases Attended (+1) and Total (+1) -->
+              <button
+                onclick="markAttendance('${sub.id}', true)"
+                class="ios-press flex-1 py-2.5 px-3 rounded-xl bg-[#30D158]/15 hover:bg-[#30D158]/25 active:bg-[#30D158]/35 border border-[#30D158]/40 text-[#30D158] font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5"
+              >
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span>Yes (Present)</span>
+              </button>
+
+              <!-- NO Option: Increases Total (+1), Attended remains same -->
+              <button
+                onclick="markAttendance('${sub.id}', false)"
+                class="ios-press flex-1 py-2.5 px-3 rounded-xl bg-[#FF453A]/15 hover:bg-[#FF453A]/25 active:bg-[#FF453A]/35 border border-[#FF453A]/40 text-[#FF453A] font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5"
+              >
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                <span>No (Absent)</span>
+              </button>
+
+              <!-- Undo Mistake Button -->
+              <button
+                onclick="undoLastAction('${sub.id}')"
+                ${hasUndo ? '' : 'disabled'}
+                title="Undo last Yes/No tap"
+                class="ios-press p-2.5 rounded-xl border ${
+                  hasUndo
+                    ? 'bg-[#1C1C24] border-[#323240] text-zinc-200 hover:bg-[#262630]'
+                    : 'bg-[#141419] border-[#1F1F26] text-zinc-600 opacity-50 cursor-not-allowed'
+                }"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+                </svg>
+              </button>
+
+              <!-- Edit Subject & Target Button -->
+              <button
+                onclick="openSubjectModal('${sub.id}')"
+                title="Edit subject counts or target percentage"
+                class="ios-press p-2.5 rounded-xl bg-[#1C1C24] hover:bg-[#262630] border border-[#323240] text-zinc-300"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+              </button>
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    // 
+    // FILTER & SORT HANDLERS
+    // 
+    function setCategoryFilter(category) {
+      activeCategory = category;
+      renderAll();
+    }
+
+    function setQuickStatusFilter(status) {
+      activeStatusFilter = (activeStatusFilter === status) ? 'all' : status;
+      renderAll();
+    }
+
+    function handleSearchChange(val) {
+      searchQuery = val;
+      const clearBtn = document.getElementById('clear-search-btn');
+      if (val.trim().length > 0) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+      renderSubjectsList();
+    }
+
+    function clearSearch() {
+      searchQuery = '';
+      document.getElementById('search-input').value = '';
+      document.getElementById('clear-search-btn').classList.add('hidden');
+      renderSubjectsList();
+    }
+
+    function handleSortChange(val) {
+      sortMode = val;
+      renderSubjectsList();
+    }
+
+    function resetAllFilters() {
+      activeCategory = 'All';
+      activeStatusFilter = 'all';
+      clearSearch();
+      renderAll();
+    }
+
+    // 
+    // ADD / EDIT MODAL FUNCTIONS
+    // 
+    function openSubjectModal(subjectId = null) {
+      const modalTitle = document.getElementById('subject-modal-title');
+      const idInput = document.getElementById('form-subject-id');
+      const nameInput = document.getElementById('form-subject-name');
+      const attendedInput = document.getElementById('form-attended');
+      const totalInput = document.getElementById('form-total');
+      const deleteBtn = document.getElementById('delete-subject-btn');
+      const errText = document.getElementById('form-count-error');
+
+      errText.classList.add('hidden');
+
+      if (subjectId) {
+        const sub = subjects.find(s => s.id === subjectId);
+        if (!sub) return;
+        modalTitle.textContent = 'Edit Subject';
+        idInput.value = sub.id;
+        nameInput.value = sub.name;
+        selectFormCategory(sub.category || 'Theory');
+        syncTargetInputs(sub.target || 75);
+        attendedInput.value = sub.attended;
+        totalInput.value = sub.total;
+        deleteBtn.classList.remove('hidden');
+      } else {
+        modalTitle.textContent = 'Add New Subject';
+        idInput.value = '';
+        nameInput.value = '';
+        selectFormCategory(activeCategory !== 'All' ? activeCategory : 'Theory');
+        syncTargetInputs(75);
+        attendedInput.value = 0;
+        totalInput.value = 0;
+        deleteBtn.classList.add('hidden');
+      }
+
+      openModal('subject-modal');
+      setTimeout(() => nameInput.focus(), 100);
+    }
+
+    function selectFormCategory(cat) {
+      document.getElementById('form-subject-category').value = cat;
+      document.querySelectorAll('.cat-choice').forEach(btn => {
+        if (btn.getAttribute('data-cat') === cat) {
+          btn.className = 'cat-choice ios-press py-2 rounded-xl text-xs font-bold border border-[#0A84FF] bg-[#0A84FF]/20 text-white';
+        } else {
+          btn.className = 'cat-choice ios-press py-2 rounded-xl text-xs font-semibold border border-[#2C2C36] bg-[#111115] text-zinc-400';
+        }
+      });
+    }
+
+    function syncTargetInputs(val) {
+      const clamped = Math.min(100, Math.max(1, parseInt(val, 10) || 75));
+      document.getElementById('form-target-number').value = clamped;
+      document.getElementById('form-target-slider').value = Math.max(50, clamped);
+    }
+
+    function stepFormCount(inputId, delta) {
+      const input = document.getElementById(inputId);
+      let current = parseInt(input.value, 10) || 0;
+      current = Math.max(0, current + delta);
+      input.value = current;
+
+      // Auto-adjust total if attended is stepped above total
+      const attendedEl = document.getElementById('form-attended');
+      const totalEl = document.getElementById('form-total');
+      const att = parseInt(attendedEl.value, 10) || 0;
+      const tot = parseInt(totalEl.value, 10) || 0;
+
+      if (inputId === 'form-attended' && att > tot) {
+        totalEl.value = att;
+      } else if (inputId === 'form-total' && tot < att) {
+        attendedEl.value = tot;
+      }
+      validateFormCounts();
+    }
+
+    function validateFormCounts() {
+      const att = parseInt(document.getElementById('form-attended').value, 10) || 0;
+      const tot = parseInt(document.getElementById('form-total').value, 10) || 0;
+      const errText = document.getElementById('form-count-error');
+      if (att > tot) {
+        errText.classList.remove('hidden');
+        return false;
+      }
+      errText.classList.add('hidden');
+      return true;
+    }
+
+    function saveSubjectForm(e) {
+      e.preventDefault();
+      if (!validateFormCounts()) return;
+
+      const id = document.getElementById('form-subject-id').value;
+      const name = document.getElementById('form-subject-name').value.trim();
+      const category = document.getElementById('form-subject-category').value || 'Theory';
+      const target = Math.min(100, Math.max(1, parseInt(document.getElementById('form-target-number').value, 10) || 75));
+      const attended = Math.max(0, parseInt(document.getElementById('form-attended').value, 10) || 0);
+      const total = Math.max(attended, parseInt(document.getElementById('form-total').value, 10) || 0);
+
+      if (!name) return;
+
+      if (id) {
+        const existing = subjects.find(s => s.id === id);
+        if (existing) {
+          existing.name = name;
+          existing.category = category;
+          existing.target = target;
+          existing.attended = attended;
+          existing.total = total;
+          showToast(`Updated "${name}"`, 'blue');
+        }
+      } else {
+        const newSubject = {
+          id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          name,
+          category,
+          target,
+          attended,
+          total,
+          lastMarked: total > 0 ? Date.now() : null,
+          history: []
+        };
+        subjects.unshift(newSubject);
+        showToast(`Added "${name}" (Target ${target}%)`, 'green');
+      }
+
+      saveToStorage();
+      renderAll();
+      closeModal('subject-modal');
+    }
+
+    function deleteCurrentSubject() {
+      const id = document.getElementById('form-subject-id').value;
+      if (!id) return;
+      const sub = subjects.find(s => s.id === id);
+      subjects = subjects.filter(s => s.id !== id);
+      saveToStorage();
+      renderAll();
+      closeModal('subject-modal');
+      if (sub) showToast(`Deleted "${sub.name}"`, 'red');
+    }
+
+    function loadSample15Subjects() {
+      subjects = JSON.parse(JSON.stringify(SAMPLE_15_SUBJECTS));
+      activeCategory = 'All';
+      activeStatusFilter = 'all';
+      saveToStorage();
+      renderAll();
+      showToast('Loaded 15 sample subjects', 'green');
+    }
+
+    // 
+    // BACKUP & RESTORE FUNCTIONS
+    // 
+    function openBackupModal() {
+      clearAllConfirmArmed = false;
+      const clearBtn = document.getElementById('clear-all-btn');
+      clearBtn.textContent = 'Clear All';
+      document.getElementById('backup-textarea').value = JSON.stringify(subjects);
+      openModal('backup-modal');
+    }
+
+    function copyBackupCode() {
+      const textarea = document.getElementById('backup-textarea');
+      textarea.value = JSON.stringify(subjects);
+      textarea.select();
+      textarea.setSelectionRange(0, 99999);
+      try {
+        document.execCommand('copy');
+        showToast('Backup code copied to clipboard!', 'green');
+      } catch (err) {
+        showToast('Select all and copy manually', 'blue');
+      }
+    }
+
+    function downloadBackupFile() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(subjects, null, 2));
+      const dlAnchor = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      dlAnchor.setAttribute("href", dataStr);
+      dlAnchor.setAttribute("download", `attendance-backup-${dateStr}.json`);
+      document.body.appendChild(dlAnchor);
+      dlAnchor.click();
+      dlAnchor.remove();
+      showToast('Backup file downloaded', 'green');
+    }
+
+    function restoreFromTextarea() {
+      const raw = document.getElementById('backup-textarea').value.trim();
+      if (!raw) {
+        showToast('Paste a valid backup code first', 'red');
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('Invalid format');
+        subjects = parsed.map((item, i) => ({
+          id: item.id || `restored-${Date.now()}-${i}`,
+          name: String(item.name || `Subject ${i + 1}`),
+          category: item.category || 'Theory',
+          attended: Math.max(0, parseInt(item.attended, 10) || 0),
+          total: Math.max(0, parseInt(item.total, 10) || 0),
+          target: Math.min(100, Math.max(1, parseInt(item.target, 10) || 75)),
+          lastMarked: item.lastMarked || null,
+          history: Array.isArray(item.history) ? item.history : []
+        }));
+        saveToStorage();
+        renderAll();
+        closeModal('backup-modal');
+        showToast(`Restored ${subjects.length} subjects!`, 'green');
+      } catch (e) {
+        showToast('Invalid backup JSON code', 'red');
+      }
+    }
+
+    function handleClearAllClick() {
+      const clearBtn = document.getElementById('clear-all-btn');
+      if (!clearAllConfirmArmed) {
+        clearAllConfirmArmed = true;
+        clearBtn.textContent = 'Tap Again to Confirm';
+        clearBtn.classList.add('bg-[#FF453A]', 'text-white');
+        return;
+      }
+      subjects = [];
+      saveToStorage();
+      renderAll();
+      closeModal('backup-modal');
+      clearBtn.classList.remove('bg-[#FF453A]', 'text-white');
+      showToast('All subjects cleared', 'red');
+    }
+
+    // 
+    // MODAL & TOAST UTILITIES
+    // 
+    function openModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('hidden');
+      el.classList.add('flex');
+    }
+
+    function closeModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.add('hidden');
+      el.classList.remove('flex');
+    }
+
+    let toastTimeout = null;
+    function showToast(message, colorType = 'green') {
+      const container = document.getElementById('toast-container');
+      const dot = document.getElementById('toast-dot');
+      const msg = document.getElementById('toast-message');
+
+      msg.textContent = message;
+      dot.style.backgroundColor =
+        colorType === 'green' ? '#30D158' :
+        colorType === 'red' ? '#FF453A' : '#0A84FF';
+
+      container.classList.remove('opacity-0', '-translate-y-3');
+      container.classList.add('opacity-100', 'translate-y-0');
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        container.classList.add('opacity-0', '-translate-y-3');
+        container.classList.remove('opacity-100', 'translate-y-0');
+      }, 2200);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+
+</body>
+</html>
+
